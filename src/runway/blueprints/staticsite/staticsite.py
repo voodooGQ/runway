@@ -100,45 +100,11 @@ class StaticSite(Blueprint):  # pylint: disable=too-few-public-methods
                                          'default': [],
                                          'description': '(Optional) Lambda '
                                                         'function '
-                                                        'assocations.'},
-    }
+                                                        'associations.'},
+        }
 
-    def create_template(self):
-        """Create template (main function called by Stacker)."""
-        template = self.template
-        variables = self.get_variables()
-        template.set_version('2010-09-09')
-        template.set_description('Static Website - Bucket and Distribution')
-
-        # Conditions
-        template.add_condition(
-            'AcmCertSpecified',
-            And(Not(Equals(variables['AcmCertificateArn'].ref, '')),
-                Not(Equals(variables['AcmCertificateArn'].ref, 'undefined')))
-        )
-        template.add_condition(
-            'AliasesSpecified',
-            And(Not(Equals(Select(0, variables['Aliases'].ref), '')),
-                Not(Equals(Select(0, variables['Aliases'].ref), 'undefined')))
-        )
-        template.add_condition(
-            'CFLoggingEnabled',
-            And(Not(Equals(variables['LogBucketName'].ref, '')),
-                Not(Equals(variables['LogBucketName'].ref, 'undefined')))
-        )
-        template.add_condition(
-            'DirectoryIndexSpecified',
-            And(Not(Equals(variables['RewriteDirectoryIndex'].ref, '')),
-                Not(Equals(variables['RewriteDirectoryIndex'].ref, 'undefined')))  # noqa
-        )
-        template.add_condition(
-            'WAFNameSpecified',
-            And(Not(Equals(variables['WAFWebACL'].ref, '')),
-                Not(Equals(variables['WAFWebACL'].ref, 'undefined')))
-        )
-
-        # Resources
-        oai = template.add_resource(
+    def add_oai_resource(self, template):
+        return template.add_resource(
             cloudfront.CloudFrontOriginAccessIdentity(
                 'OAI',
                 CloudFrontOriginAccessIdentityConfig=cloudfront.CloudFrontOriginAccessIdentityConfig(  # noqa pylint: disable=line-too-long
@@ -147,7 +113,8 @@ class StaticSite(Blueprint):  # pylint: disable=too-few-public-methods
             )
         )
 
-        bucket = template.add_resource(
+    def add_website_bucket_resource(self, template):
+        return template.add_resource(
             s3.Bucket(
                 'Bucket',
                 AccessControl=s3.Private,
@@ -168,13 +135,9 @@ class StaticSite(Blueprint):  # pylint: disable=too-few-public-methods
                 )
             )
         )
-        template.add_output(Output(
-            'BucketName',
-            Description='Name of website bucket',
-            Value=bucket.ref()
-        ))
 
-        allowcfaccess = template.add_resource(
+    def add_cloudfront_access_policy_resource(self, template, oai, bucket):
+        return template.add_resource(
             s3.BucketPolicy(
                 'AllowCFAccess',
                 Bucket=bucket.ref(),
@@ -198,7 +161,8 @@ class StaticSite(Blueprint):  # pylint: disable=too-few-public-methods
             )
         )
 
-        cfdirectoryindexrewriterole = template.add_resource(
+    def add_cloudfront_directory_index_rewrite_role(self, template):
+        return template.add_resource(
             iam.Role(
                 'CFDirectoryIndexRewriteRole',
                 Condition='DirectoryIndexSpecified',
@@ -220,7 +184,10 @@ class StaticSite(Blueprint):  # pylint: disable=too-few-public-methods
             )
         )
 
-        cfdirectoryindexrewrite = template.add_resource(
+    def add_cloudfront_directory_index_rewrite_lambda_resource(self, template, index_rewrite_role):
+        variables = self.get_variables()
+
+        return template.add_resource(
             awslambda.Function(
                 'CFDirectoryIndexRewrite',
                 Condition='DirectoryIndexSpecified',
@@ -251,42 +218,55 @@ class StaticSite(Blueprint):  # pylint: disable=too-few-public-methods
                 ),
                 Description='Rewrites CF directory HTTP requests to default page',  # noqa
                 Handler='index.handler',
-                Role=cfdirectoryindexrewriterole.get_att('Arn'),
+                Role=index_rewrite_role.get_att('Arn'),
                 Runtime='nodejs10.x'
             )
         )
 
-        # Generating a unique resource name here for the Lambda version, so it
-        # updates automatically if the lambda code changes
-        code_hash = hashlib.md5(
-            str(cfdirectoryindexrewrite.properties['Code'].properties['ZipFile'].to_dict()).encode()  # noqa pylint: disable=line-too-long
-        ).hexdigest()
-
-        cfdirectoryindexrewritever = template.add_resource(
+    def add_cloudfront_directory_index_rewrite_lambda_version_resource(
+            self,
+            template,
+            rewrite_lambda,
+            code_hash
+    ):
+        return template.add_resource(
             awslambda.Version(
                 'CFDirectoryIndexRewriteVer' + code_hash,
                 Condition='DirectoryIndexSpecified',
-                FunctionName=cfdirectoryindexrewrite.ref()
+                FunctionName=rewrite_lambda.ref()
             )
         )
 
+    def add_lambda_associations(self, lambda_version):
+        variables = self.get_variables()
+
         # If custom associations defined, use them
         if variables['lambda_function_associations']:
-            lambda_function_associations = [
+            return [
                 cloudfront.LambdaFunctionAssociation(
                     EventType=x['type'],
                     LambdaFunctionARN=x['arn']
                 ) for x in variables['lambda_function_associations']
             ]
-        else:  # otherwise fallback to pure CFN condition
-            lambda_function_associations = If(
-                'DirectoryIndexSpecified',
-                [cloudfront.LambdaFunctionAssociation(
-                    EventType='origin-request',
-                    LambdaFunctionARN=cfdirectoryindexrewritever.ref()
-                )],
-                NoValue
-            )
+
+        return If(
+            'DirectoryIndexSpecified',
+            [cloudfront.LambdaFunctionAssociation(
+                EventType='origin-request',
+                LambdaFunctionARN=lambda_version.ref()
+            )],
+            NoValue
+        )
+
+    def add_cloudfront_distribution_resource(
+            self,
+            template,
+            oai,
+            bucket,
+            lambda_function_associations,
+            access_policy
+    ):
+        variables = self.get_variables()
 
         cf_dist_opts = {
             'Aliases': If(
@@ -356,27 +336,114 @@ class StaticSite(Blueprint):  # pylint: disable=too-few-public-methods
                 ) for x in variables['custom_error_responses']
             ]
 
-        cfdistribution = template.add_resource(
+        return template.add_resource(
             get_cf_distribution_class()(
                 'CFDistribution',
-                DependsOn=allowcfaccess.title,
+                DependsOn=access_policy.title,
                 DistributionConfig=get_cf_distro_conf_class()(
                     **cf_dist_opts
                 )
             )
         )
-        template.add_output(Output(
+
+    def add_bucket_name_output(self, template, bucket):
+        return template.add_output(Output(
+            'BucketName',
+            Description='Name of website bucket',
+            Value=bucket.ref()
+        ))
+
+    def add_cloudfront_distribution_id_output(self, template, cfdistribution):
+        return template.add_output(Output(
             'CFDistributionId',
             Description='CloudFront distribution ID',
             Value=cfdistribution.ref()
         ))
-        template.add_output(
+
+    def add_cloudfront_distribution_domain_output(self, template, cfdistribution):
+        return template.add_output(
             Output(
                 'CFDistributionDomainName',
                 Description='CloudFront distribution domain name',
                 Value=cfdistribution.get_att('DomainName')
             )
         )
+
+    def cloudfront_setup(self, template, bucket):
+        oai = self.add_oai_resource(template)
+        access_policy = self.add_cloudfront_access_policy_resource(template, oai, bucket)
+        role = self.add_cloudfront_directory_index_rewrite_role(template)
+        rewrite_lambda = self.add_cloudfront_directory_index_rewrite_lambda_resource(
+            template, role
+        )
+
+        # Generating a unique resource name here for the Lambda version, so it
+        # updates automatically if the lambda code changes
+        code_hash = hashlib.md5(
+            str(rewrite_lambda.properties['Code'].properties['ZipFile'].to_dict()).encode()  # noqa pylint: disable=line-too-long
+        ).hexdigest()
+
+        lambda_ver = self.add_cloudfront_directory_index_rewrite_lambda_version_resource(
+            template,
+            rewrite_lambda,
+            code_hash,
+        )
+
+        lambda_function_associations = self.add_lambda_associations(lambda_ver)
+
+        cfdistribution = self.add_cloudfront_distribution_resource(
+            template,
+            oai,
+            bucket,
+            lambda_function_associations,
+            access_policy
+        )
+
+        self.add_cloudfront_distribution_id_output(template, cfdistribution)
+        self.add_cloudfront_distribution_domain_output(template, cfdistribution)
+
+    def website_bucket_setup(self, template):
+        bucket = self.add_website_bucket_resource(template)
+        self.add_bucket_name_output(template, bucket)
+        return bucket
+
+    def create_template(self):
+        """Create template (main function called by Stacker)."""
+        template = self.template
+        variables = self.get_variables()
+        template.set_version('2010-09-09')
+        template.set_description('Static Website - Bucket and Distribution')
+
+        # Conditions
+        template.add_condition(
+            'AcmCertSpecified',
+            And(Not(Equals(variables['AcmCertificateArn'].ref, '')),
+                Not(Equals(variables['AcmCertificateArn'].ref, 'undefined')))
+        )
+        template.add_condition(
+            'AliasesSpecified',
+            And(Not(Equals(Select(0, variables['Aliases'].ref), '')),
+                Not(Equals(Select(0, variables['Aliases'].ref), 'undefined')))
+        )
+        template.add_condition(
+            'CFLoggingEnabled',
+            And(Not(Equals(variables['LogBucketName'].ref, '')),
+                Not(Equals(variables['LogBucketName'].ref, 'undefined')))
+        )
+        template.add_condition(
+            'DirectoryIndexSpecified',
+            And(Not(Equals(variables['RewriteDirectoryIndex'].ref, '')),
+                Not(Equals(variables['RewriteDirectoryIndex'].ref, 'undefined')))  # noqa
+        )
+        template.add_condition(
+            'WAFNameSpecified',
+            And(Not(Equals(variables['WAFWebACL'].ref, '')),
+                Not(Equals(variables['WAFWebACL'].ref, 'undefined')))
+        )
+
+        # Resources
+        bucket = self.website_bucket_setup(template)
+        # self.cloudfront_setup(template, bucket)
 
 
 def get_cf_distribution_class():

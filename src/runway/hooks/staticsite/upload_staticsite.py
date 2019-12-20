@@ -58,6 +58,7 @@ def sync(context, provider, **kwargs):
                  "s3://%s/" % bucket_name,
                  '--delete'])
 
+        # NEED IF STATEMENT HERE
         distribution = get_distribution_data(context, provider, **kwargs)
         invalidate_distribution(session, **distribution)
 

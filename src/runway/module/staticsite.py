@@ -93,14 +93,20 @@ class StaticSite(RunwayModule):
         if env.get('staticsite_enable_cf_logging', True):
             site_stack_variables['LogBucketName'] = "${rxref %s-dependencies::AWSLogBucketName}" % name  # noqa pylint: disable=line-too-long
 
-        # If lambda_function_associations or custom_error_responses defined,
-        # add to stack config
         for i in ['custom_error_responses', 'lambda_function_associations']:
             if env.get("staticsite_%s" % i):
                 site_stack_variables[i] = env.get("staticsite_%s" % i)
                 self.options.get('environments',
                                  {}).get(self.context.env_name,
                                          {}).pop("staticsite_%s" % i)
+
+        post_build_args = {'bucket_output_lookup': '%s::BucketName' % name}
+
+        if self.options.get('options', {}).get('staticsite_cloudfront', True):
+            post_build_args.update({
+                'distributionid_output_lookup': '%s::CFDistributionId' % name,
+                'distributiondomain_output_lookup': '%s::CFDistributionDomainName' % name
+            })
 
         with open(os.path.join(module_dir, '02-staticsite.yaml'), 'w') as output_stream:  # noqa
             yaml.dump(
@@ -119,10 +125,7 @@ class StaticSite(RunwayModule):
                  'post_build': [
                      {'path': 'runway.hooks.staticsite.upload_staticsite.sync',
                       'required': True,
-                      'args': {
-                          'bucket_output_lookup': '%s::BucketName' % name,
-                          'distributionid_output_lookup': '%s::CFDistributionId' % name,  # noqa
-                          'distributiondomain_output_lookup': '%s::CFDistributionDomainName' % name}}  # noqa pylint: disable=line-too-long
+                      'args': post_build_args}
                  ],
                  'pre_destroy': [
                      {'path': 'runway.hooks.cleanup_s3.purge_bucket',
