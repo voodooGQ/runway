@@ -8,4 +8,5 @@ Quickstart Guides
 
     cloudformation
     conduit
+    static-site
     other_ways_to_use
