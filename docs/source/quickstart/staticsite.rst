@@ -362,4 +362,10 @@ Destroy
 Conclusion
 ^^^^^^^^^^
 
-This example demonstrates a rudimentary static site build with an production build steps. If you want to get off the ground and running quicker Runway comes standard with sample generation for a React or Angular static site with the respective commands `runway gen-sample static-react` or `runway gen-sample static-angular`
+This example demonstrates a rudimentary static site build with an production build steps. If you want to get off the ground and running quicker Runway comes standard with sample generation for a React or Angular static site with the respective commands.
+
+   .. code-block:: shell
+
+    runway gen-sample static-react
+    # or
+    runway gen-sample static-angular
