@@ -299,6 +299,7 @@ class StaticSite(Blueprint):  # pylint: disable=too-few-public-methods
             )
         )
 
+<<<<<<< HEAD
     def add_bucket_policy(self, bucket):
         """Add a policy to the bucket if CloudFront is disabled. Ensure PublicRead.
 
@@ -340,6 +341,49 @@ class StaticSite(Blueprint):  # pylint: disable=too-few-public-methods
 
         """
         bucket = self.template.add_resource(
+||||||| merged common ancestors
+        bucket = template.add_resource(
+=======
+    def add_bucket_policy(self, bucket):
+        """Add a policy to the bucket if CloudFront is disabled. Ensure PublicRead.
+
+        Keyword Args:
+            bucket (dict): The bucket resource to place the policy
+
+        Returns:
+            dict: The Bucket Policy Resource
+
+        """
+        return self.template.add_resource(
+            s3.BucketPolicy(
+                'BucketPolicy',
+                Bucket=bucket.ref(),
+                Condition='CFDisabled',
+                PolicyDocument=Policy(
+                    Version="2012-10-17",
+                    Statement=[
+                        Statement(
+                            Effect=Allow,
+                            Principal=Principal('*'),
+                            Action=[Action('s3', 'getObject')],
+                            Resource=[
+                                Join('', [bucket.get_att('Arn'), '/*'])
+                            ],
+                        )
+                    ]
+                )
+            )
+        )
+
+    def add_bucket(self):
+        """Add the bucket resource along with an output of it's name / website url.
+
+        Returns:
+            dict: The bucket resource
+
+        """
+        bucket = self.template.add_resource(
+>>>>>>> feature/optional-cloudfront-on-staticsite-module
             s3.Bucket(
                 'Bucket',
                 AccessControl=If('CFEnabled', s3.Private, s3.PublicRead),
@@ -365,6 +409,7 @@ class StaticSite(Blueprint):  # pylint: disable=too-few-public-methods
             Description='Name of website bucket',
             Value=bucket.ref()
         ))
+<<<<<<< HEAD
         self.template.add_output(Output(
             'BucketWebsiteURL',
             Condition="CFDisabled",
@@ -375,6 +420,19 @@ class StaticSite(Blueprint):  # pylint: disable=too-few-public-methods
 
     def allow_cloudfront_access_on_bucket(self, bucket, oai):
         """Given a bucket and oai resource add cloudfront access to the bucket.
+||||||| merged common ancestors
+=======
+        self.template.add_output(Output(
+            'BucketWebsiteURL',
+            Condition="CFDisabled",
+            Description='URL of the bucket website',
+            Value=bucket.get_att('WebsiteURL')
+        ))
+        return bucket
+
+    def allow_cloudfront_access_on_bucket(self, bucket, oai):
+        """Given a bucket and oai resource add cloudfront access to the bucket.
+>>>>>>> feature/optional-cloudfront-on-staticsite-module
 
         Keyword Args:
             bucket (dict): A bucket resource
