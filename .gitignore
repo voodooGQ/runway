@@ -5,6 +5,7 @@
 .eggs
 *.egg-info
 build
+!integration_tests/test_staticsite/fixtures/basic-site/build
 dist
 docs/source/_build
 # This is dynamically built at build-time via make
