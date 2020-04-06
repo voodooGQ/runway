@@ -1,15 +1,15 @@
 import time
+
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 
 
 '''
 base page class that is inherited by all pages and includes
 things available to all pages
 '''
-class BasePage() :
-    timeout = {
+class BasePage():
+    TIMEOUT = {
         's': 1,
         'm': 3,
         'l': 6,
@@ -30,15 +30,21 @@ class BasePage() :
         return self.base_url
 
     def element(self, locator):
-        ''' wait and get a single element via css selector (eg. #id) '''
-        return WebDriverWait(self.driver, self.timeout['l']).until(lambda x: x.find_element(*locator))
+        """wait and get a single element via css selector (eg. #id)."""
+        return WebDriverWait(self.driver, self.TIMEOUT['l']).until(
+            lambda x: x.find_element(*locator)
+        )
 
     def elements(self, locator):
         ''' wait and get multiple elements via css selector (eg. .class) '''
-        return WebDriverWait(self.driver, self.timeout['l']).until(lambda x: x.find_elements(*locator))
+        return WebDriverWait(self.driver, self.TIMEOUT['l']).until(
+            lambda x: x.find_elements(*locator)
+        )
 
     def wait_for_element(self, locator):
-        return WebDriverWait(self.driver, self.timeout['l']).until(lambda x: x.find_element(*locator))
+        return WebDriverWait(self.driver, self.TIMEOUT['l']).until(
+            lambda x: x.find_element(*locator)
+        )
 
     def sleep(self, seconds=1):
         ''' sleeps are an abomination... but... '''

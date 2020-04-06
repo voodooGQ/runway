@@ -1,10 +1,14 @@
 import pytest
 from requests import get
 from ...pages.auth_at_edge.login_page import LoginPage
+from ...runner import Runner
 
 @pytest.fixture(scope="module", autouse=True)
 def setup(driver):
     global loginPage
+    runner = Runner('Test Login')
+    runner.copy_fixture('e2e-auth-at-edge')
+    runner.copy_runway('auth-at-edge')
     loginPage = LoginPage(driver, 'https://shaneallensmith.com')
     loginPage.goto('/')
 
