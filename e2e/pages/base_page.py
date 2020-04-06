@@ -16,9 +16,9 @@ class BasePage() :
         'xl': 12
     }
 
-    def __init__(self, driver):
+    def __init__(self, driver, base_url):
         self.driver = driver
-        self.base_url = driver.base_url
+        self.base_url = base_url
 
     def goto(self, url):
         ''' wrapper for get() '''
