@@ -6,7 +6,6 @@ deployments:
         dev:
           namespace: dev
           staticsite_auth_at_edge: true
-      options:
-        build_output: build
+          staticsite_create_user_pool: true
     regions:
       - us-east-1

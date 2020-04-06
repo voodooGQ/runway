@@ -9,37 +9,41 @@ from integration_tests.util import run_command
 
 LOGGER = logging.getLogger(__name__)
 
+
 class TestThing():
+    runner = Runner("Test Login")
+    integration_test = IntegrationTest(LOGGER)
+    login_page = None
+
     @pytest.fixture(scope="module", autouse=True)
     def setup(self, driver):
-        global runner
-        runner = Runner('Test Login')
-
         try:
-            global loginPage
-            runner.copy_fixture('e2e-auth-at-edge')
-            runner.copy_runway('auth-at-edge')
-            with change_dir(runner.temp_dir):
-                integrationTest = IntegrationTest(LOGGER)
-                integrationTest.set_environment('dev')
-                integrationTest.set_env_var('PIPENV_VENV_IN_PROJECT', '1')
+            self.runner.copy_fixture('e2e-auth-at-edge')
+            self.runner.copy_runway('auth-at-edge')
+            with change_dir(self.runner.temp_dir):
                 assert self.deploy() == 0, '{}: E2E A@E Failed'.format(__name__)
+                self.login_page = LoginPage(driver, 'https://shaneallensmith.com')
                 yield
-                runner.clean()
-        except:
-            runner.clean()
+                self.teardown()
+        except Exception:  # pylint: disable=broad-except
+            self.teardown()
 
     def deploy(self):
-        integrationTest = IntegrationTest(LOGGER)
-        integrationTest.set_environment('dev')
-        integrationTest.set_env_var('PIPENV_VENV_IN_PROJECT', '1')
+        self.integration_test.set_environment('dev')
+        self.integration_test.set_env_var('PIPENV_VENV_IN_PROJECT', '1')
+        self.integration_test.set_env_var('CI', '1')
         return run_command(['runway', 'deploy'])
 
+    def teardown(self):
+        try:
+            with change_dir(self.runner.temp_dir):
+                run_command(['runway', 'destroy'])
+        finally:
+            self.runner.clean()
 
-    def test_login_returns_status_200(driver):
-        res = get(loginPage.get_base_url())
-
+    def test_login_returns_status_200(self, driver):
+        res = get(self.login_page.get_base_url())
         assert res.status_code == 200
 
-    def test_for_correct_page_title(driver):
-        assert loginPage.page_title_equals('Shane Smith')
+    def test_for_correct_page_title(self, driver):
+        assert self.login_page.page_title_equals('Shane Smith')
