@@ -15,7 +15,6 @@ class TestBasicSite(StaticSite):
 
     def deploy(self):
         """Deploy provider."""
-        os.mkdir(self.staticsite_test_dir)
         os.mkdir(os.path.join(self.staticsite_test_dir, self.module_dir))
         os.mkdir(os.path.join(self.staticsite_test_dir, self.module_dir, 'build'))
         self.copy_runway('basic-site')

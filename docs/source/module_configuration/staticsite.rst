@@ -3,6 +3,94 @@
 Static Site
 ===========
 
+Description
+-----------
+
+This module type performs idempotent deployments of static websites. It
+combines CloudFormation stacks (for S3 buckets & CloudFront Distribution)
+with additional logic to build & sync the sites.
+
+It can be used with a configuration like the following:
+
+.. code-block:: yaml
+
+    deployments:
+      - modules:
+          - path: web
+            type: static
+            parameters:
+              namespace: contoso-dev
+              staticsite_aliases: web.example.com,foo.web.example.com
+              staticsite_acmcert_arn: arn:aws:acm:us-east-1:123456789012:certificate/...
+            options:
+              build_steps:
+                - npm ci
+                - npm run build
+              build_output: dist
+        regions:
+          - us-west-2
+
+This will build the website in ``web`` via the specified build_steps and then
+upload the contents of ``web/dist`` to an S3 bucket created in the
+CloudFormation stack ``web-dev-conduit``. On subsequent deploys, the website
+will be built and synced only if the non-git-ignored files in ``web`` change.
+
+The site domain name is available via the ``CFDistributionDomainName`` output
+of the ``<namespace>-<path>`` stack (e.g. ``contoso-dev-web`` above) and will
+be displayed on stack creation/updates.
+
+A start-to-finish example walkthrough is available
+in the :ref:`Conduit quickstart<qs-conduit>`.
+
+**Please note:** The CloudFront distribution will take a significant amount
+of time to spin up on initial deploy (10 to 60 minutes is not abnormal).
+Incorporating CloudFront with a static site is a common best practice, however,
+if you are working on a development project it may benefit you to add the
+`staticsite_cf_disable` environment parameter set to `true`.
+
+`Auth@Edge`
+-----------
+
+`Auth@Edge`_ allows the user to make their staticsite private, authenticated by
+users in Cognito (which supports local users and/or federated identity providers). The solution is inspired
+by similar ones such as `aws-samples/cloudfront-authorization-at-edge <https://github.com/aws-samples/cloudfront-authorization-at-edge>`_.
+
+The following diagram depicts a high-level overview of this solution.
+
+.. image:: ../images/staticsite/auth_at_edge/flow_diagram.png
+
+Here is how the solution works:
+
+1. The viewer’s web browser is redirected to Amazon Cognito custom UI page to sign up and authenticate.
+2. After authentication, Cognito generates and cryptographically signs a JWT then responds with a redirect containing the JWT embedded in the URL.
+3. The viewer’s web browser extracts JWT from the URL and makes a request to private content (private/* path), adding Authorization request header with JWT.
+4. Amazon CloudFront routes the request to the nearest AWS edge location. The CloudFront distribution’s private behavior is configured to launch a `Lambda@Edge` function on ViewerRequest event.
+5. `Lambda@Edge` decodes the JWT and checks if the user belongs to the correct Cognito User Pool. It also verifies the cryptographic signature using the public RSA key for Cognito User Pool. Crypto verification ensures that JWT was created by the trusted party.
+6. After passing all of the verification steps, `Lambda@Edge` strips out the Authorization header and allows the request to pass through to designated origin for CloudFront. In this case, the origin is the private content Amazon S3 bucket.
+7. After receiving response from the origin S3 bucket, CloudFront sends the response back to the browser. The browser displays the data from the returned response.
+
+An example of a `Auth@Edge`_ static site configuration is as follows:
+
+.. code-block:: yaml
+
+  deployments:
+    - modules:
+      - path: sample-app
+        type: static
+        parameters:
+          dev:
+            namespace: sample-app-dev
+            staticsite_auth_at_edge: true
+            staticsite_user_pool_arn: arn:aws:cognito-idp:us-east-1:240134083525:userpool/us-east-1_cjVgcUyWV
+      regions:
+        # NOTE: Much like ACM certificates used with CloudFront,
+        # Auth@Edge sites must be deployed to us-east-1
+        - us-east-1
+
+The `Auth@Edge`_ functionality uses your existing Cognito User Pool (optionally configured
+with federated identity providers) or can create one for you with the ``staticsite_create_user_pool`` option.
+A user pool app client will be automatically created within the pool for the application's use.
+
 Parameters
 ----------
 
@@ -285,95 +373,3 @@ Options
   .. code-block:: yaml
 
     build_output: dist
-
-Description
------------
-
-This module type performs idempotent deployments of static websites. It
-combines CloudFormation stacks (for S3 buckets & CloudFront Distribution)
-with additional logic to build & sync the sites.
-
-It can be used with a configuration like the following:
-
-.. code-block:: yaml
-
-    deployments:
-      - modules:
-          - path: web
-            type: static
-            parameters:
-              namespace: contoso-dev
-              staticsite_aliases: web.example.com,foo.web.example.com
-              staticsite_acmcert_arn: arn:aws:acm:us-east-1:123456789012:certificate/...
-            options:
-              build_steps:
-                - npm ci
-                - npm run build
-              build_output: dist
-        regions:
-          - us-west-2
-
-This will build the website in ``web`` via the specified build_steps and then
-upload the contents of ``web/dist`` to an S3 bucket created in the
-CloudFormation stack ``web-dev-conduit``. On subsequent deploys, the website
-will be built and synced only if the non-git-ignored files in ``web`` change.
-
-The site domain name is available via the ``CFDistributionDomainName`` output
-of the ``<namespace>-<path>`` stack (e.g. ``contoso-dev-web`` above) and will
-be displayed on stack creation/updates.
-
-A start-to-finish example walkthrough is available
-in the :ref:`Conduit quickstart<qs-conduit>`.
-
-**Please note:** The CloudFront distribution will take a significant amount
-of time to spin up on initial deploy (10 to 60 minutes is not abnormal).
-Incorporating CloudFront with a static site is a common best practice, however,
-if you are working on a development project it may benefit you to add the
-`staticsite_cf_disable` environment parameter set to `true`.
-
-`Auth@Edge`
------------
-
-`Auth@Edge`_ allows the user to make their staticsite private, authenticated by
-users in Cognito (which supports local users and/or federated identity providers). The solution is inspired
-by similar ones such as `aws-samples/cloudfront-authorization-at-edge <https://github.com/aws-samples/cloudfront-authorization-at-edge>`_.
-
-The following diagram depicts a high-level overview of this solution.
-
-.. image:: ../images/staticsite/auth_at_edge/flow_diagram.png
-
-Here is how the solution works:
-
-1. The viewer’s web browser is redirected to Amazon Cognito custom UI page to sign up and authenticate.
-2. After authentication, Cognito generates and cryptographically signs a JWT then responds with a redirect containing the JWT embedded in the URL.
-3. The viewer’s web browser extracts JWT from the URL and makes a request to private content (private/* path), adding Authorization request header with JWT.
-4. Amazon CloudFront routes the request to the nearest AWS edge location. The CloudFront distribution’s private behavior is configured to launch a `Lambda@Edge` function on ViewerRequest event.
-5. `Lambda@Edge` decodes the JWT and checks if the user belongs to the correct Cognito User Pool. It also verifies the cryptographic signature using the public RSA key for Cognito User Pool. Crypto verification ensures that JWT was created by the trusted party.
-6. After passing all of the verification steps, `Lambda@Edge` strips out the Authorization header and allows the request to pass through to designated origin for CloudFront. In this case, the origin is the private content Amazon S3 bucket.
-7. After receiving response from the origin S3 bucket, CloudFront sends the response back to the browser. The browser displays the data from the returned response.
-
-An example of a `Auth@Edge`_ static site configuration is as follows:
-
-.. code-block:: yaml
-
-  variables:
-    dev:
-      namespace: sample-app-dev
-      staticsite_user_pool_arn: arn:aws:cognito-idp:us-east-1:240134083525:userpool/us-east-1_cjVgcUyWV
-      
-  deployments:
-    - modules:
-      - path: sample-app
-        type: static
-        parameters:
-          namespace: ${var ${env DEPLOY_ENVIRONMENT}.namespace}
-          staticsite_auth_at_edge: true
-          staticsite_user_pool_arn: ${var ${env DEPLOY_ENVIRONMENT}.staticsite_user_pool_arn}
-      regions:
-        # NOTE: Much like ACM certificates used with CloudFront,
-        # Auth@Edge sites must be deployed to us-east-1
-        - us-east-1
-
-The `Auth@Edge`_ functionality uses your existing Cognito User Pool (optionally configured
-with federated identity providers) or can create one for you with the ``staticsite_create_user_pool`` option.
-A user pool app client will be automatically created within the pool for the application's use.

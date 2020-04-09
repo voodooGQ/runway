@@ -10,7 +10,7 @@ from integration_tests.util import (copy_file, copy_dir, import_tests,
 
 
 class StaticSite(IntegrationTest):
-    """Test StaticSite based module scenarios"""
+    """Test StaticSite based module scenarios."""
     base_dir = os.path.abspath(os.path.dirname(__file__))
     fixtures_dir = os.path.join(base_dir, 'fixtures')
     tests_dir = os.path.join(base_dir, 'tests')
@@ -18,7 +18,7 @@ class StaticSite(IntegrationTest):
     staticsite_test_dir = os.path.join(base_dir, 'staticsite_test')
 
     def copy_fixture(self, name='basic-site'):
-        """Copy fixture files for test"""
+        """Copy fixture files for test."""
         copy_dir(
             os.path.join(self.fixtures_dir, name),
             os.path.join(self.staticsite_test_dir, name)
@@ -53,7 +53,7 @@ class StaticSite(IntegrationTest):
             if os.path.isfile(template):
                 self.logger.debug('send2trash: "%s"', template)
                 send2trash(template)
-        folders = ['basic-site']
+        folders = ['basic-site', 'auth-at-edge']
         for folder in folders:
             folder_path = os.path.join(self.staticsite_test_dir, folder)
             if os.path.isdir(folder_path):
